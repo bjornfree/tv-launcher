@@ -54,7 +54,7 @@ var TV = (function () {
     window.close();
   }
 
-  function listApps() {
+  function listApps(onAsync) {
     var apps = [];
     if (typeof window.HiUtils_createRequest === "function") {
       var c = call("HiUtils_createRequest", ["fileRead", { path: "websdk/Appinfo.json", mode: 6 }]);
@@ -70,6 +70,15 @@ var TV = (function () {
       log("Hisense_FileRead Appinfo.json -> " + (r.ok ? typeof r.r + " " + String(JSON.stringify(r.r)).slice(0, 300) : r.e));
       var list = findArray(raw);
       (list || []).forEach(function (a) { apps.push(fromAppinfo(a)); });
+      // вдруг API асинхронный: пробуем вариант с колбэком, результат придёт позже
+      if (!list && onAsync) {
+        var c2 = call("Hisense_FileRead", ["websdk/Appinfo.json", 6, function (res) {
+          log("Hisense_FileRead callback -> " + typeof res + " " + String(JSON.stringify(res)).slice(0, 300));
+          var l2 = findArray(res && res.msg !== undefined ? res.msg : res);
+          if (l2 && l2.length) onAsync(l2.map(fromAppinfo));
+        }]);
+        log("Hisense_FileRead(cb) -> " + (c2.ok ? typeof c2.r + " " + String(JSON.stringify(c2.r)).slice(0, 200) : c2.e));
+      }
     }
     bridgeNames(/app.*(list|info)|installed/i).forEach(function (n) {
       if (/install|uninstall/i.test(n) && !/installed/i.test(n)) return; // не вызывать установку/удаление

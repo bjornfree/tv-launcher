@@ -360,8 +360,9 @@
     ]);
   }
 
-  function openTvApps() {
-    var apps = TV.listApps();
+  function openTvApps(asyncApps) {
+    // асинхронный ответ ТВ перерисует список, если он ещё открыт
+    var apps = asyncApps || TV.listApps(function (late) { if (modal && modal.title === "Приложения телевизора") openTvApps(late); });
     var have = {};
     cfg.tiles.forEach(function (t) { have[(t.name || "").toLowerCase()] = 1; });
     var self = location.href.split(/[?#]/)[0];
@@ -372,7 +373,11 @@
         addTile({ name: a.name, glyph: a.name.charAt(0).toUpperCase(), color: PALETTE[a.name.length % PALETTE.length], icon: a.icon || presetIcon(a.name) || undefined, url: a.url, native: a.native, appId: a.appId });
       } };
     });
-    if (!items.length) items = [{ label: "ТВ не отдал список приложений", hint: "Отправь экран «Диагностика» — подберу нужную функцию", ok: openDiag }];
+    if (!items.length) {
+      // ответ ТВ прямо здесь, чтобы хватило одного фото
+      var why = TV.LOG.filter(function (l) { return /apps via|FileRead/.test(l); }).slice(0, 4);
+      items = [{ label: "ТВ не отдал список приложений", hint: "открыть Диагностику", ok: openDiag }].concat(why.map(function (l) { return { label: l.slice(9, 140) }; }));
+    }
     openModal("Приложения телевизора", items, { onBack: function () { openSettings(1); } });
   }
 
