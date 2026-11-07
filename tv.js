@@ -82,11 +82,13 @@ var TV = (function () {
 
   function listInputs() {
     var out = [];
-    bridgeNames(/get.*(source|input)/i).forEach(function (n) {
+    // не трогаем блокировки/пароли: Hisense_GetCurrentSourceLockStatus и т.п.
+    bridgeNames(/get.*(source|input)/i).filter(function (n) { return !/lock|status|password|rating|block/i.test(n); }).forEach(function (n) {
       var c = call(n);
       var arr = c.ok ? findArray(c.r) : null;
       log("inputs via " + n + ": " + (arr ? arr.length : (c.ok ? JSON.stringify(c.r) : c.e)));
       (arr || []).forEach(function (s) {
+        if (!pick(s, ["sourceid", "id", "sourcename", "displayname", "name"])) return;
         out.push({ id: pick(s, ["sourceid", "id", "sourcename"]), name: pick(s, ["displayname", "name", "sourcename"]), signal: s.is_signal === "1" || s.has_signal === "1" });
       });
     });
@@ -94,7 +96,8 @@ var TV = (function () {
   }
 
   function switchInput(src) {
-    var fns = bridgeNames(/(set|change|switch).*(source|input)/i);
+    // только прямое переключение источника; Set*SourceLock* и подобные никогда не вызываем
+    var fns = bridgeNames(/^Hisense_(Set|Change|Switch)(Current|TV)?(Source|Input)$/i);
     for (var i = 0; i < fns.length; i++) {
       var c = call(fns[i], [src.id]);
       log("input " + src.id + " via " + fns[i] + " -> " + (c.ok ? JSON.stringify(c.r) : c.e));

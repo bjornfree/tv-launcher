@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Home</title>
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;600&display=swap" rel="stylesheet">
 <style>
@@ -58,10 +60,11 @@
   .tile.focus .label { color: var(--text); }
   .tile.moving .card { transform: scale(1.08) rotate(-2deg); }
   /* стеклянный фокус: один слой, ездит поверх плитки в фокусе */
-  .glass { position: absolute; left: 0; top: 0; border-radius: var(--radius); pointer-events: none; z-index: 2;
+  #glass { position: absolute; left: 0; top: 0; border-radius: var(--radius); pointer-events: none; z-index: 2;
     width: var(--tw); height: var(--th); background: linear-gradient(160deg, rgba(255,255,255,.28), rgba(255,255,255,.04) 55%);
-    box-shadow: inset 0 0 0 3px var(--glass-edge); transform: scale(1.08); transform-origin: 50% 50%; }
-  .tile.moving .glass { box-shadow: inset 0 0 0 4px #ffd60a; }
+    box-shadow: inset 0 0 0 3px var(--glass-edge); transform-origin: 50% 50%; opacity: 0;
+    transition: transform .22s var(--ease), opacity .15s; }
+  .moving-mode #glass { box-shadow: inset 0 0 0 4px #ffd60a; }
   .empty { color: var(--muted); font-size: 28px; padding: 40px 0; }
 
   /* ---- модальные окна (настройки, меню, форма) */
@@ -85,7 +88,14 @@
   .swatch.on { border-color: var(--text); }
   .item.focus .swatch.on { border-color: #000; }
 
-  #diag { white-space: pre-wrap; font: 20px/1.4 Menlo, monospace; margin: 0 48px; color: var(--muted); }
+  #sheet.wide { left: 60px; right: 60px; top: 40px; bottom: 40px; width: auto; }
+  #sheet.wide #items { position: static; transform: none !important; } /* #diag меряется от #sheet */
+  #diag { position: absolute; left: 48px; right: 48px; top: 210px; bottom: 30px; overflow: hidden; color: var(--muted); }
+  #diag-in { transition: transform .2s var(--ease); }
+  .fns-title { font-size: 24px; color: var(--text); margin-bottom: 10px; }
+  .fns { -webkit-column-count: 4; column-count: 4; -webkit-column-gap: 24px; column-gap: 24px; font: 19px/1.45 Menlo, monospace; color: var(--text); }
+  .fn { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #diag pre { white-space: pre-wrap; font: 19px/1.4 Menlo, monospace; margin: 20px 0 0; }
   #toast { position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); background: var(--surface-2); z-index: 20;
     border-radius: 40px; padding: 18px 40px; font-size: 28px; opacity: 0; transition: opacity .3s; white-space: nowrap; }
 </style>
@@ -100,6 +110,7 @@
     <div id="title"></div>
     <section id="dock"></section>
     <section id="grid"></section>
+    <div id="glass"></div>
   </div>
 </main>
 <div id="modal"><div id="sheet"><h2 id="sheet-title"></h2><div id="items"></div></div></div>

@@ -103,15 +103,13 @@
 
   // ------------------------------------------------------------ отрисовка
   function tileHtml(t, i, eol) {
-    var f = focus.area === "tiles" && focus.i === i;
     var src = iconSrc(t);
     var glyph = '<b class="glyph">' + esc(t.glyph || (t.name || "?").charAt(0).toUpperCase()) + "</b>";
     // картинка не загрузилась (нет сети, битый адрес) -> показываем букву
     var card = src ? '<img class="' + (/\.svg(\?|$)/i.test(src) ? "logo" : "badge") + '" src="' + esc(src) + '" alt="" onerror="this.parentNode.className+=\' noimg\'">' + glyph : glyph;
-    return '<div class="tile' + (f ? " focus" : "") + (moving === i ? " moving" : "") + (eol ? " eol" : "") + '" data-i="' + i + '">' +
-      '<span class="card' + (src ? "" : " noimg") + '" style="background:' + esc(t.color || "#2c2c2e") + (f ? ";box-shadow:0 18px 60px " + esc(t.color || "#000") + "88" : "") + '">' +
+    return '<div class="tile' + (moving === i ? " moving" : "") + (eol ? " eol" : "") + '" data-i="' + i + '">' +
+      '<span class="card' + (src ? "" : " noimg") + '" style="background:' + esc(t.color || "#2c2c2e") + '">' +
       card + (t.native && !t.url ? '<span class="sub">ТВ</span>' : "") + "</span>" +
-      (f ? '<span class="glass"></span>' : "") +
       '<div class="label">' + esc(t.name) + "</div></div>";
   }
 
@@ -126,6 +124,7 @@
 
   function render() {
     layout();
+    document.body.className = moving >= 0 ? "moving-mode" : "";
     var d = dockSize(), dock = "", grid = "";
     for (var i = 0; i < cfg.tiles.length; i++) {
       var p = pos(i);
@@ -134,11 +133,36 @@
     }
     $("dock").innerHTML = dock || '<div class="empty">Нет приложений — Настройки → Добавить</div>';
     $("grid").innerHTML = grid;
+    focusedEl = null;
+    updateFocus();
+  }
 
+  // перемещение фокуса без перерисовки DOM: иначе CSS-переходы (масштаб, стекло, прокрутка) не анимируются
+  var focusedEl = null;
+  function updateFocus() {
     var pills = document.querySelectorAll(".pill");
     for (var k = 0; k < pills.length; k++) pills[k].className = "pill" + (focus.area === "top" && focus.top === k ? " focus" : "");
 
-    var cur = focus.area === "tiles" ? cfg.tiles[focus.i] : null;
+    var el = focus.area === "tiles" ? document.querySelector('.tile[data-i="' + focus.i + '"]') : null;
+    if (focusedEl && focusedEl !== el) {
+      focusedEl.className = focusedEl.className.replace(" focus", "");
+      focusedEl.firstChild.style.boxShadow = "";
+    }
+    var glass = $("glass");
+    if (el) {
+      if (el.className.indexOf(" focus") < 0) el.className += " focus";
+      var t = cfg.tiles[focus.i];
+      el.firstChild.style.boxShadow = "0 18px 60px " + (t.color || "#000") + "88";
+      // координаты плитки внутри #content: секция (#dock/#grid) + плитка
+      var x = el.parentNode.offsetLeft + el.offsetLeft, y = el.parentNode.offsetTop + el.offsetTop;
+      glass.style.transform = "translate(" + x + "px," + y + "px) scale(1.08)";
+      glass.style.opacity = 1;
+    } else {
+      glass.style.opacity = 0;
+    }
+    focusedEl = el;
+
+    var cur = el ? cfg.tiles[focus.i] : null;
     $("title").textContent = moving >= 0 ? "Перемещение: стрелки, OK — готово" : cur ? cur.name : "";
     scrollToFocus();
     saveFocus();
@@ -194,7 +218,7 @@
   function renderModal() {
     if (!modal) return;
     $("modal").style.display = "block";
-    $("sheet").className = modal.left ? "left" : "";
+    $("sheet").className = modal.left ? "left" : modal.wide ? "wide" : "";
     $("sheet-title").textContent = modal.title;
     var html = "";
     for (var i = 0; i < modal.items.length; i++) {
@@ -205,7 +229,7 @@
       if (it.input) html += '<input type="' + (it.input.type || "text") + '" data-in="' + i + '" value="' + esc(it.input.get()) + '">';
       html += "</div>";
     }
-    if (modal.pre) html += '<div id="diag">' + esc(modal.pre) + "</div>";
+    if (modal.pre) html += '<div id="diag"><div id="diag-in" style="transform:translateY(' + -(modal.scroll || 0) + 'px)">' + modal.pre + "</div></div>";
     $("items").innerHTML = html;
     // прокрутка длинного списка
     var el = document.querySelector('.item[data-m="' + modal.idx + '"]');
@@ -225,6 +249,14 @@
       if (k === "ok" || k === "up" || k === "down") { readInputs(); blurInput(); if (k === "ok") k = "down"; }
       else if (k === "back") { readInputs(); blurInput(); return; }
       else return "pass"; // стрелки влево/вправо и буквы — в поле ввода
+    }
+    // экран с текстом: вверх/вниз листают текст
+    if (modal.pre && (k === "up" || k === "down")) {
+      var inner = $("diag-in"), box = $("diag");
+      var maxS = Math.max(0, inner.offsetHeight - box.clientHeight);
+      modal.scroll = clamp((modal.scroll || 0) + (k === "down" ? 400 : -400), 0, maxS);
+      inner.style.transform = "translateY(" + -modal.scroll + "px)";
+      return;
     }
     if (k === "up") modal.idx = clamp(modal.idx - 1, 0, modal.items.length - 1);
     else if (k === "down") modal.idx = clamp(modal.idx + 1, 0, modal.items.length - 1);
@@ -359,9 +391,12 @@
 
   function openDiag() {
     var p = TV.probe();
-    openModal("Диагностика", [{ label: "Закрыть", ok: closeModal }]);
-    modal.pre = "Функции ТВ (" + p.bridge.length + "):\n" + (p.bridge.join("\n") || "— нет —") + "\n\n" +
-      JSON.stringify(p, function (k, v) { return k === "bridge" ? undefined : v; }, 1) + "\n\nЖурнал:\n" + TV.LOG.join("\n");
+    openModal("Диагностика", [{ label: "Закрыть (вверх/вниз — листать)", ok: closeModal }]);
+    modal.wide = true;
+    // имена функций колонками без префикса Hisense_, чтобы все 90+ влезли на один экран для фото
+    var names = p.bridge.map(function (n) { return '<span class="fn">' + esc(n.replace(/^Hisense_/, "")) + "</span>"; }).join("");
+    modal.pre = '<div class="fns-title">Функции ТВ (' + p.bridge.length + '), префикс Hisense_ опущен:</div><div class="fns">' + (names || "— нет —") + "</div>" +
+      "<pre>" + esc(JSON.stringify(p, function (k, v) { return k === "bridge" ? undefined : v; }, 1) + "\n\nЖурнал:\n" + TV.LOG.join("\n")) + "</pre>";
     renderModal();
   }
 
@@ -403,14 +438,14 @@
       else if (k === "down" && cfg.tiles.length) focus.area = "tiles";
       else if (k === "ok") return focus.top === 0 ? openInputs() : openSettings(0);
       else if (k === "back") window.close();
-      return render();
+      return updateFocus();
     }
     if (k === "menu") return cfg.tiles[focus.i] && openTileMenu(focus.i);
-    if (k === "back") { if (pos(focus.i).r > 0) { focus.i = index(0, 0); return render(); } return window.close(); }
+    if (k === "back") { if (pos(focus.i).r > 0) { focus.i = index(0, 0); return updateFocus(); } return window.close(); }
     var n = step(focus.i, k);
     if (n === "top") focus.area = "top";
     else if (n >= 0) focus.i = n;
-    render();
+    updateFocus();
   }
 
   function moveKey(k) {
