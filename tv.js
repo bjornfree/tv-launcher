@@ -1,0 +1,108 @@
+// Мост к API телевизора. Ни одна функция VIDAA не документирована, поэтому всё — best-effort:
+// перебираем кандидатов, пишем в лог, что сработало. Реальные имена берутся из экрана «Диагностика».
+var TV = (function () {
+  var LOG = [];
+  function log(s) { LOG.unshift(new Date().toTimeString().slice(0, 8) + " " + s); if (LOG.length > 200) LOG.length = 200; }
+
+  function bridgeNames(re) {
+    var out = [];
+    for (var k in window) {
+      try {
+        if (/^(Hisense|HiUtils|hisense)/.test(k) && typeof window[k] === "function" && (!re || re.test(k))) out.push(k);
+      } catch (e) {}
+    }
+    return out.sort();
+  }
+
+  function call(name, args) {
+    try { return { ok: true, r: window[name].apply(window, args || []) }; }
+    catch (e) { return { ok: false, e: String(e) }; }
+  }
+
+  function parse(v) {
+    if (typeof v !== "string") return v;
+    try { return JSON.parse(v); } catch (e) { return v; }
+  }
+
+  // ищет в произвольном JSON первый массив объектов (список приложений/источников)
+  function findArray(v, depth) {
+    v = parse(v);
+    if (!v || typeof v !== "object" || (depth || 0) > 4) return null;
+    if (v instanceof Array) return v.length && typeof v[0] === "object" ? v : null;
+    for (var k in v) { var a = findArray(v[k], (depth || 0) + 1); if (a) return a; }
+    return null;
+  }
+
+  function pick(o, keys) { for (var i = 0; i < keys.length; i++) if (o[keys[i]]) return String(o[keys[i]]); return ""; }
+
+  function probe() {
+    var info = { ua: navigator.userAgent, href: location.href, screen: screen.width + "x" + screen.height + " / " + innerWidth + "x" + innerHeight, bridge: bridgeNames() };
+    ["Hisense_GetFirmWareVersion", "Hisense_GetModelName", "Hisense_GetOSVersion", "Hisense_GetApiVersion", "Hisense_GetBrand"].forEach(function (n) {
+      if (typeof window[n] === "function") { var c = call(n); info[n] = c.ok ? c.r : "ERR " + c.e; }
+    });
+    return info;
+  }
+
+  function listApps() {
+    var apps = [];
+    if (typeof window.HiUtils_createRequest === "function") {
+      var c = call("HiUtils_createRequest", ["fileRead", { path: "websdk/Appinfo.json", mode: 6 }]);
+      var arr = c.ok && c.r && c.r.ret ? findArray(c.r.msg) : null;
+      log("apps via HiUtils Appinfo.json: " + (arr ? arr.length : (c.e || "нет")));
+      (arr || []).forEach(function (a) { apps.push({ name: pick(a, ["AppName", "Title", "name"]), url: pick(a, ["URL", "url", "StartCommand"]), icon: pick(a, ["Icon_96", "IconURL", "Image", "Thumb"]), native: "" }); });
+    }
+    bridgeNames(/app.*(list|info)|installed/i).forEach(function (n) {
+      if (/install|uninstall/i.test(n) && !/installed/i.test(n)) return; // не вызывать установку/удаление
+      var c = call(n);
+      var arr = c.ok ? findArray(c.r) : null;
+      log("apps via " + n + ": " + (arr ? arr.length : (c.ok ? "не список" : c.e)));
+      (arr || []).forEach(function (a) {
+        var name = pick(a, ["name", "appName", "AppName", "title", "Title"]);
+        if (name) apps.push({ name: name, url: "", native: name, appId: pick(a, ["appId", "id", "Id"]), icon: pick(a, ["icon", "iconUrl", "IconURL", "Icon_96", "thumbnail", "image"]) });
+      });
+    });
+    return apps;
+  }
+
+  function launchNative(tile) {
+    var cands = [
+      ["Hisense_launchAppViaName", [tile.native]],
+      ["Hisense_StartApp", [tile.native]],
+      ["Hisense_StartApp", [":am," + (tile.appId || tile.native) + ",:start=" + (tile.appId || tile.native)]]
+    ];
+    for (var i = 0; i < cands.length; i++) {
+      if (typeof window[cands[i][0]] !== "function") continue;
+      var c = call(cands[i][0], cands[i][1]);
+      log("launch " + tile.native + " via " + cands[i][0] + "(" + cands[i][1][0] + ") -> " + (c.ok ? JSON.stringify(c.r) : c.e));
+      if (c.ok) return true;
+    }
+    log("launch " + tile.native + ": нет подходящей функции");
+    return false;
+  }
+
+  function listInputs() {
+    var out = [];
+    bridgeNames(/get.*(source|input)/i).forEach(function (n) {
+      var c = call(n);
+      var arr = c.ok ? findArray(c.r) : null;
+      log("inputs via " + n + ": " + (arr ? arr.length : (c.ok ? JSON.stringify(c.r) : c.e)));
+      (arr || []).forEach(function (s) {
+        out.push({ id: pick(s, ["sourceid", "id", "sourcename"]), name: pick(s, ["displayname", "name", "sourcename"]), signal: s.is_signal === "1" || s.has_signal === "1" });
+      });
+    });
+    return out;
+  }
+
+  function switchInput(src) {
+    var fns = bridgeNames(/(set|change|switch).*(source|input)/i);
+    for (var i = 0; i < fns.length; i++) {
+      var c = call(fns[i], [src.id]);
+      log("input " + src.id + " via " + fns[i] + " -> " + (c.ok ? JSON.stringify(c.r) : c.e));
+      if (c.ok) return true;
+    }
+    log("input " + src.id + ": нет функции переключения источника");
+    return false;
+  }
+
+  return { log: log, LOG: LOG, probe: probe, listApps: listApps, launchNative: launchNative, listInputs: listInputs, switchInput: switchInput };
+})();
