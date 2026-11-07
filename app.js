@@ -364,7 +364,8 @@
     var apps = TV.listApps();
     var have = {};
     cfg.tiles.forEach(function (t) { have[(t.name || "").toLowerCase()] = 1; });
-    var items = apps.filter(function (a) { return a.name; }).map(function (a) {
+    var self = location.href.split(/[?#]/)[0];
+    var items = apps.filter(function (a) { return a.name && a.url !== self; }).map(function (a) {
       var added = have[a.name.toLowerCase()];
       return { label: a.name, val: function () { return added ? "добавлено" : "+"; }, hint: a.url || "встроенное", ok: function () {
         if (added) return;
@@ -437,11 +438,11 @@
       else if (k === "right") focus.top = Math.min(1, focus.top + 1);
       else if (k === "down" && cfg.tiles.length) focus.area = "tiles";
       else if (k === "ok") return focus.top === 0 ? openInputs() : openSettings(0);
-      else if (k === "back") window.close();
+      else if (k === "back") TV.exit();
       return updateFocus();
     }
     if (k === "menu") return cfg.tiles[focus.i] && openTileMenu(focus.i);
-    if (k === "back") { if (pos(focus.i).r > 0) { focus.i = index(0, 0); return updateFocus(); } return window.close(); }
+    if (k === "back") { if (pos(focus.i).r > 0) { focus.i = index(0, 0); return updateFocus(); } return TV.exit(); }
     var n = step(focus.i, k);
     if (n === "top") focus.area = "top";
     else if (n >= 0) focus.i = n;

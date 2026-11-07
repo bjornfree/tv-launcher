@@ -43,13 +43,33 @@ var TV = (function () {
     return info;
   }
 
+  // запись websdk/Appinfo.json: веб-приложения, установленные через магазин/установщик
+  function fromAppinfo(a) {
+    return { name: pick(a, ["AppName", "Title", "name"]), url: pick(a, ["URL", "url", "StartCommand"]), icon: pick(a, ["Icon_96", "IconURL", "Image", "Thumb"]), native: "" };
+  }
+
+  // выход из приложения: штатно через Hisense_CloseBrowser, иначе window.close
+  function exit() {
+    if (typeof window.Hisense_CloseBrowser === "function") { var c = call("Hisense_CloseBrowser"); if (c.ok) return; }
+    window.close();
+  }
+
   function listApps() {
     var apps = [];
     if (typeof window.HiUtils_createRequest === "function") {
       var c = call("HiUtils_createRequest", ["fileRead", { path: "websdk/Appinfo.json", mode: 6 }]);
       var arr = c.ok && c.r && c.r.ret ? findArray(c.r.msg) : null;
       log("apps via HiUtils Appinfo.json: " + (arr ? arr.length : (c.e || "нет")));
-      (arr || []).forEach(function (a) { apps.push({ name: pick(a, ["AppName", "Title", "name"]), url: pick(a, ["URL", "url", "StartCommand"]), icon: pick(a, ["Icon_96", "IconURL", "Image", "Thumb"]), native: "" }); });
+      (arr || []).forEach(function (a) { apps.push(fromAppinfo(a)); });
+    }
+    // VIDAA U4/U6: Hisense_FileRead(path, mode), mode 6 = /APPS. Только чтение; FileWrite не вызываем.
+    if (typeof window.Hisense_FileRead === "function") {
+      var r = call("Hisense_FileRead", ["websdk/Appinfo.json", 6]);
+      var raw = r.ok ? r.r : null;
+      if (raw && typeof raw === "object" && raw.msg !== undefined) raw = raw.msg;
+      log("Hisense_FileRead Appinfo.json -> " + (r.ok ? typeof r.r + " " + String(JSON.stringify(r.r)).slice(0, 300) : r.e));
+      var list = findArray(raw);
+      (list || []).forEach(function (a) { apps.push(fromAppinfo(a)); });
     }
     bridgeNames(/app.*(list|info)|installed/i).forEach(function (n) {
       if (/install|uninstall/i.test(n) && !/installed/i.test(n)) return; // не вызывать установку/удаление
@@ -107,5 +127,5 @@ var TV = (function () {
     return false;
   }
 
-  return { log: log, LOG: LOG, probe: probe, listApps: listApps, launchNative: launchNative, listInputs: listInputs, switchInput: switchInput };
+  return { log: log, LOG: LOG, exit: exit, probe: probe, listApps: listApps, launchNative: launchNative, listInputs: listInputs, switchInput: switchInput };
 })();
